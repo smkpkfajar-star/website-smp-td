@@ -2,17 +2,14 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSeoMeta } from '@unhead/vue'
-
-// Harus sama dengan alamat endpoint di BeritaView.vue
-const API_URL =
-  import.meta.env.VITE_BERITA_API_URL || 'https://scrap-ig-apify-u55q.vercel.app/api/instagram/'
+import { useBerita } from '../composables/UseBerita'
 
 const route = useRoute()
 const router = useRouter()
 
-const posts = ref([])
-const loading = ref(true)
-const error = ref('')
+// Data dipakai bersama halaman berita; API hanya dipanggil bila belum ada
+const { beritaList, loading, error, muat } = useBerita()
+
 const gambarRusak = ref([])
 const videoGagal = ref(false)
 const tersalin = ref(false)
@@ -24,95 +21,12 @@ const warnaKategori = {
   Kegiatan: 'bg-orange-100 text-orange-800'
 }
 
-const RE_EMOJI = /[\p{Extended_Pictographic}\uFE0F\u200D]/gu
-
-// Caption Instagram -> daftar baris teks yang bersih
-function bersihkan(caption = '') {
-  return caption
-    .replace(/https?:\/\/\S+/g, '')
-    .replace(/#\S+/g, '')
-    .replace(/@/g, '')
-    .replace(RE_EMOJI, '')
-    .replace(/^\s*salam dan bahagia[\s,.!]*/i, '')
-    .split('\n')
-    .map((l) => l.replace(/\s+/g, ' ').trim())
-    .filter((l) => l && !/^[.\-_•]+$/.test(l))
-}
-
-function kapital(teks) {
-  return teks.charAt(0).toUpperCase() + teks.slice(1)
-}
-
-function tentukanKategori(teks) {
-  const t = teks.toLowerCase()
-  if (/juara|trophy|prestasi/.test(t)) return 'Prestasi'
-  if (/asesmen|belajar|pembelajaran|pelatihan|kokurikuler/.test(t)) return 'Akademik'
-  if (/pengumuman|pendaftaran|spmb|ppdb/.test(t)) return 'Pengumuman'
-  return 'Kegiatan'
-}
-
-// Tahan terhadap tanggal kosong/tidak valid
-function formatTanggal(iso) {
-  const d = new Date(iso)
-  if (!iso || isNaN(d)) return ''
-  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
-}
-
-// posted_at bisa null, pakai created_at sebagai cadangan
-const waktuPost = (p) => p.posted_at || p.created_at
-
-function buatSlug(teks) {
-  const s = teks
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/&/g, ' dan ')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  return s.length <= 70 ? s : s.slice(0, 70).replace(/-[^-]*$/, '')
-}
-
-// Judul kembar diberi akhiran angka dari id supaya alamatnya tetap unik
-function pastikanSlugUnik(daftar) {
-  const hitung = {}
-  daftar.forEach((b) => (hitung[b.slug] = (hitung[b.slug] || 0) + 1))
-  return daftar.map((b) =>
-    !b.slug || hitung[b.slug] > 1 ? { ...b, slug: `${b.slug || 'berita'}-${b.id.slice(-4)}` } : b
-  )
-}
-
-const beritaList = computed(() => {
-  const daftar = [...posts.value]
-    .sort((a, b) => new Date(waktuPost(b)) - new Date(waktuPost(a)))
-    .map((p) => {
-      const caption = p.caption || ''
-      const baris = bersihkan(caption)
-      const judul = kapital(baris[0] || 'Kabar dari sekolah')
-      return {
-        id: String(p.id),
-        slug: buatSlug(judul),
-        judul,
-        isi: baris.slice(1),
-        kategori: tentukanKategori(baris.join(' ')),
-        tanggal: formatTanggal(waktuPost(p)),
-        gambar: p.thumbnail_url,
-        video: p.is_video,
-        videoUrl: p.video_url,
-        url: p.post_url || '',
-        hashtag: [...new Set(caption.match(/#[\p{L}\p{N}_]+/gu) || [])],
-        tautan: [...new Set(caption.match(/https?:\/\/\S+/g) || [])]
-      }
-    })
-  return pastikanSlugUnik(daftar)
-})
-
 // Alamat memakai judul (slug). Alamat lama berbasis id tetap dikenali.
 const item = computed(() =>
   beritaList.value.find((b) => b.slug === route.params.slug || b.id === route.params.slug)
 )
 const lainnya = computed(() => beritaList.value.filter((b) => b.id !== item.value?.id).slice(0, 3))
 
-// Meta tag (Unhead)
 const deskripsi = computed(
   () => item.value?.isi.join(' ').slice(0, 200) || 'Kabar terbaru dari sekolah.'
 )
@@ -131,21 +45,6 @@ useSeoMeta({
 
 function adaGambar(b) {
   return b.gambar && !gambarRusak.value.includes(b.id)
-}
-
-async function muat() {
-  loading.value = true
-  error.value = ''
-  try {
-    const res = await fetch(API_URL)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json()
-    posts.value = Array.isArray(json.data) ? json.data : []
-  } catch (e) {
-    error.value = 'Berita belum bisa dimuat. Coba lagi beberapa saat.'
-  } finally {
-    loading.value = false
-  }
 }
 
 async function salinTautan() {
@@ -171,7 +70,8 @@ watch(item, (b) => {
   if (b && route.params.slug !== b.slug) router.replace(`/berita/${b.slug}`)
 })
 
-onMounted(muat)
+// Tidak memanggil API bila data sudah dimuat halaman berita
+onMounted(() => muat())
 </script>
 
 <template>
@@ -187,7 +87,7 @@ onMounted(muat)
           Kembali ke berita
         </router-link>
 
-        <template v-if="item">
+        <div v-if="item" :key="item.id" class="fade-in">
           <div class="mt-6 flex items-center gap-3">
             <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="warnaKategori[item.kategori]">
               {{ item.kategori }}
@@ -195,7 +95,18 @@ onMounted(muat)
             <span class="text-sm text-[#FBF9F4]/60">{{ item.tanggal }}</span>
           </div>
           <h1 class="mt-4 text-3xl font-extrabold leading-tight md:text-4xl">{{ item.judul }}</h1>
-        </template>
+        </div>
+
+        <div v-else-if="loading" aria-hidden="true">
+          <div class="mt-6 flex items-center gap-3">
+            <div class="h-6 w-20 animate-pulse rounded-full bg-[#FBF9F4]/15"></div>
+            <div class="h-4 w-28 animate-pulse rounded bg-[#FBF9F4]/15"></div>
+          </div>
+          <div class="mt-4 space-y-3">
+            <div class="h-9 w-full animate-pulse rounded bg-[#FBF9F4]/15"></div>
+            <div class="h-9 w-2/3 animate-pulse rounded bg-[#FBF9F4]/15"></div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -210,7 +121,7 @@ onMounted(muat)
       <!-- Gagal -->
       <div v-else-if="error" class="rounded-2xl border border-[#E2DDD0] bg-white p-10 text-center">
         <p class="font-semibold">{{ error }}</p>
-        <button type="button" class="mt-4 rounded-xl bg-[#16523A] px-6 py-3 font-semibold text-[#FBF9F4] transition hover:bg-[#0F3B29]" @click="muat">
+        <button type="button" class="mt-4 rounded-xl bg-[#16523A] px-6 py-3 font-semibold text-[#FBF9F4] transition hover:bg-[#0F3B29]" @click="muat(true)">
           Muat ulang
         </button>
       </div>
@@ -223,9 +134,9 @@ onMounted(muat)
         </router-link>
       </div>
 
-      <article v-else>
+      <article v-else :key="item.id" class="fade-in">
         <!-- Media -->
-        <div class="overflow-hidden rounded-3xl border border-[#E2DDD0] bg-[#E2DDD0]/50">
+        <div class="min-h-[16rem] overflow-hidden rounded-3xl border border-[#E2DDD0] bg-[#E2DDD0]/50">
           <video
             v-if="item.video && item.videoUrl && !videoGagal"
             :key="item.id"
@@ -279,6 +190,7 @@ onMounted(muat)
         <!-- Aksi -->
         <div class="mt-10 flex flex-wrap gap-3 border-t border-[#E2DDD0] pt-8">
           <a
+            v-if="item.url"
             :href="item.url"
             target="_blank"
             rel="noopener noreferrer"
@@ -339,5 +251,20 @@ onMounted(muat)
 
 .detail {
   font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+.fade-in {
+  animation: fade-in 0.35s ease-out both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 </style>
