@@ -58,7 +58,7 @@ const warnaKategori = {
             Generasi cerdas, berkarakter, dan berprestasi
           </h1>
           <p class="mt-4 max-w-md text-lg text-[#FBF9F4]/70">
-            Pendidikan berkualitas berbasis teknologi dan pembentukan karakter di Taman Madya Jetis.
+            Pendidikan berkualitas berbasis teknologi dan pembentukan karakter di SMP Taman Muda Jetis.
           </p>
 
           <div class="mt-8 flex flex-wrap gap-3">
