@@ -1,33 +1,26 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useBerita } from '../composables/UseBerita'
 
-// Isi `gambar` dengan path foto, contoh: '/images/berita/ppdb.jpg'
-const beritaTerbaru = ref([
-  {
-    id: 1,
-    judul: 'Penerimaan Peserta Didik Baru (PPDB) T.A 2026/2027 Resmi Dibuka',
-    tanggal: '20 September 2026',
-    kategori: 'Pengumuman',
-    ringkasan: 'Pendaftaran siswa baru untuk tahun ajaran baru telah dibuka secara online maupun offline.',
-    gambar: ''
-  },
-  {
-    id: 2,
-    judul: 'Tim Pramuka Meraih Juara Umum di Perkemahan Daerah',
-    tanggal: '15 September 2026',
-    kategori: 'Prestasi',
-    ringkasan: 'Siswa-siswi menunjukkan keunggulan kedisiplinan dan keterampilan di ajang pramuka tingkat kabupaten.',
-    gambar: ''
-  },
-  {
-    id: 3,
-    judul: 'Pelaksanaan Asesmen Nasional Berbasis Komputer (ANBK)',
-    tanggal: '10 September 2026',
-    kategori: 'Akademik',
-    ringkasan: 'Kegiatan ANBK berjalan dengan lancar didukung fasilitas laboratorium komputer sekolah.',
-    gambar: ''
-  }
-])
+// Berita diambil dari API yang sama dengan halaman berita (data dibagi lewat composable)
+const { beritaList, loading, error, muat } = useBerita()
+onMounted(() => muat())
+
+// 3 postingan terbaru saja (daftar sudah diurutkan dari yang terbaru)
+const beritaTerbaru = computed(() =>
+  beritaList.value.slice(0, 3).map((b) => {
+    const teks = b.isi.join(' ')
+    return {
+      ...b,
+      ringkasan: teks.length > 140 ? teks.slice(0, 140).replace(/\s+\S*$/, '') + '...' : teks
+    }
+  })
+)
+
+const gambarRusak = ref([])
+function adaGambar(b) {
+  return b.gambar && !gambarRusak.value.includes(b.id)
+}
 
 // Isi dengan path foto, contoh: '/images/sekolah.jpg'. Kosong = tampil placeholder.
 const fotoSekolah = ''
@@ -43,7 +36,8 @@ const statistik = [
 const warnaKategori = {
   Pengumuman: 'bg-amber-100 text-amber-800',
   Prestasi: 'bg-emerald-100 text-emerald-800',
-  Akademik: 'bg-sky-100 text-sky-800'
+  Akademik: 'bg-sky-100 text-sky-800',
+  Kegiatan: 'bg-orange-100 text-orange-800'
 }
 </script>
 
@@ -128,20 +122,48 @@ const warnaKategori = {
           </router-link>
         </div>
 
-        <div class="grid gap-6 md:grid-cols-3">
+        <!-- Memuat -->
+        <div v-if="loading" class="grid gap-6 md:grid-cols-3" aria-busy="true">
+          <div v-for="n in 3" :key="n" class="overflow-hidden rounded-2xl border border-[#E2DDD0] bg-[#FBF9F4]">
+            <div class="aspect-[16/10] animate-pulse bg-[#E2DDD0]/70"></div>
+            <div class="space-y-3 p-6">
+              <div class="h-5 w-24 animate-pulse rounded-full bg-[#E2DDD0]/70"></div>
+              <div class="h-5 w-full animate-pulse rounded bg-[#E2DDD0]/70"></div>
+              <div class="h-4 w-2/3 animate-pulse rounded bg-[#E2DDD0]/70"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gagal -->
+        <div v-else-if="error" class="rounded-2xl border border-[#E2DDD0] bg-[#FBF9F4] p-10 text-center">
+          <p class="font-semibold">{{ error }}</p>
+          <button type="button" class="mt-4 rounded-xl bg-[#16523A] px-6 py-3 font-semibold text-[#FBF9F4] transition hover:bg-[#0F3B29]" @click="muat(true)">
+            Muat ulang
+          </button>
+        </div>
+
+        <!-- Kosong -->
+        <div v-else-if="!beritaTerbaru.length" class="rounded-2xl border border-[#E2DDD0] bg-[#FBF9F4] p-10 text-center">
+          <p class="font-semibold">Belum ada berita.</p>
+        </div>
+
+        <!-- Daftar -->
+        <div v-else class="fade-in grid gap-6 md:grid-cols-3">
           <router-link
             v-for="item in beritaTerbaru"
             :key="item.id"
-            to="/berita"
+            :to="`/berita/${item.slug}`"
             class="group flex flex-col overflow-hidden rounded-2xl border border-[#E2DDD0] bg-[#FBF9F4] transition hover:-translate-y-1 hover:shadow-lg"
           >
             <div class="aspect-[16/10] overflow-hidden bg-[#E2DDD0]/60">
               <img
-                v-if="item.gambar"
+                v-if="adaGambar(item)"
                 :src="item.gambar"
                 :alt="item.judul"
                 loading="lazy"
+                referrerpolicy="no-referrer"
                 class="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                @error="gambarRusak.push(item.id)"
               />
               <div v-else class="flex h-full items-center justify-center text-sm text-[#0F3B29]/40">
                 Cover berita
@@ -155,8 +177,9 @@ const warnaKategori = {
                 </span>
                 <span class="text-xs text-[#0F3B29]/50">{{ item.tanggal }}</span>
               </div>
-              <h3 class="mt-4 text-lg font-bold leading-snug group-hover:text-[#16523A]">{{ item.judul }}</h3>
-              <p class="mt-2 flex-1 text-sm text-[#0F3B29]/70">{{ item.ringkasan }}</p>
+              <h3 class="mt-4 line-clamp-2 text-lg font-bold leading-snug group-hover:text-[#16523A]">{{ item.judul }}</h3>
+              <p v-if="item.ringkasan" class="mt-2 line-clamp-3 flex-1 text-sm text-[#0F3B29]/70">{{ item.ringkasan }}</p>
+              <span v-else class="flex-1"></span>
               <span class="mt-4 text-sm font-semibold text-[#16523A]">Baca selengkapnya</span>
             </div>
           </router-link>
@@ -185,5 +208,20 @@ const warnaKategori = {
 
 .home {
   font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+.fade-in {
+  animation: fade-in 0.35s ease-out both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 </style>
