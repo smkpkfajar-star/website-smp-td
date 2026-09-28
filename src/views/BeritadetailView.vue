@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useSeoMeta } from '@unhead/vue'
 
 // Harus sama dengan alamat endpoint di BeritaView.vue
 const API_URL =
@@ -50,9 +51,15 @@ function tentukanKategori(teks) {
   return 'Kegiatan'
 }
 
+// Tahan terhadap tanggal kosong/tidak valid
 function formatTanggal(iso) {
-  return new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+  const d = new Date(iso)
+  if (!iso || isNaN(d)) return ''
+  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
 }
+
+// posted_at bisa null, pakai created_at sebagai cadangan
+const waktuPost = (p) => p.posted_at || p.created_at
 
 function buatSlug(teks) {
   const s = teks
@@ -76,7 +83,7 @@ function pastikanSlugUnik(daftar) {
 
 const beritaList = computed(() => {
   const daftar = [...posts.value]
-    .sort((a, b) => new Date(b.posted_at) - new Date(a.posted_at))
+    .sort((a, b) => new Date(waktuPost(b)) - new Date(waktuPost(a)))
     .map((p) => {
       const caption = p.caption || ''
       const baris = bersihkan(caption)
@@ -87,11 +94,11 @@ const beritaList = computed(() => {
         judul,
         isi: baris.slice(1),
         kategori: tentukanKategori(baris.join(' ')),
-        tanggal: formatTanggal(p.posted_at),
+        tanggal: formatTanggal(waktuPost(p)),
         gambar: p.thumbnail_url,
         video: p.is_video,
         videoUrl: p.video_url,
-        url: p.post_url,
+        url: p.post_url || '',
         hashtag: [...new Set(caption.match(/#[\p{L}\p{N}_]+/gu) || [])],
         tautan: [...new Set(caption.match(/https?:\/\/\S+/g) || [])]
       }
@@ -104,6 +111,23 @@ const item = computed(() =>
   beritaList.value.find((b) => b.slug === route.params.slug || b.id === route.params.slug)
 )
 const lainnya = computed(() => beritaList.value.filter((b) => b.id !== item.value?.id).slice(0, 3))
+
+// Meta tag (Unhead)
+const deskripsi = computed(
+  () => item.value?.isi.join(' ').slice(0, 200) || 'Kabar terbaru dari sekolah.'
+)
+
+useSeoMeta({
+  title: () => item.value?.judul ?? 'Berita',
+  description: () => deskripsi.value,
+  ogType: 'article',
+  ogTitle: () => item.value?.judul ?? 'Berita',
+  ogDescription: () => deskripsi.value,
+  ogImage: () =>
+    item.value ? `${window.location.origin}/api/og-image?slug=${item.value.slug}` : undefined,
+  ogUrl: () => (item.value ? `${window.location.origin}/berita/${item.value.slug}` : undefined),
+  twitterCard: 'summary_large_image'
+})
 
 function adaGambar(b) {
   return b.gambar && !gambarRusak.value.includes(b.id)
@@ -316,4 +340,4 @@ onMounted(muat)
 .detail {
   font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
 }
-</style>ww
+</style>

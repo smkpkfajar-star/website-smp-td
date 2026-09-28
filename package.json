@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@unhead/vue": "^1.11.20",
     "core-js": "^3.8.3",
     "lucide-vue-next": "^1.0.0",
     "vue": "^3.2.13",
