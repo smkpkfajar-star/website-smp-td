@@ -27,7 +27,7 @@ function closeMenu() {
         class="group flex items-center gap-3 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16523A] rounded-lg"
       >
         <div class="w-9 h-9 rounded-xl bg-[#16523A] flex items-center justify-center text-[#FBF9F4] font-semibold text-sm shadow-sm group-hover:scale-105 transition-transform duration-200">
-          TD
+          T udpate
         </div>
         <div class="flex flex-col leading-tight">
           <span class="text-base font-bold text-[#16523A] tracking-tight group-hover:text-[#16523A]/80 transition-colors">
